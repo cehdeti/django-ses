@@ -49,6 +49,24 @@ class SESConfigurationSetTester(object):
         return self.configuration_set
 
 
+class SESTenantTester(object):
+    def __init__(self, tenant):
+        self.message = None
+        self.dkim_domain = None
+        self.dkim_key = None
+        self.dkim_selector = None
+        self.dkim_headers = ()
+        self.tenant = tenant
+
+    def __call__(self, message, dkim_domain=None, dkim_key=None, dkim_selector=None, dkim_headers=()):
+        self.message = message
+        self.dkim_domain = dkim_domain
+        self.dkim_key = dkim_key
+        self.dkim_selector = dkim_selector
+        self.dkim_headers = dkim_headers
+        return self.tenant
+
+
 class FakeSESConnection:
     """
     A fake SES connection for testing purposes.It behaves similarly
@@ -285,6 +303,27 @@ class SESV2BackendTest(TestCase):
         self.assertEqual(config_set_callable.dkim_selector, "ses")
         self.assertEqual(config_set_callable.dkim_headers, ["From", "To", "Cc", "Subject"])
 
+    @override_settings(AWS_SES_TENANT="test-tenant")
+    def test_tenant_send_mail(self):
+        send_mail("subject", "body\n", "from@example.com", ["to@example.com"])
+        self.assertEqual(self.outbox.pop()["TenantName"], "test-tenant")
+
+    def test_tenant_callable_send_mail(self):
+        tenant_callable = SESTenantTester("message-tenant")
+        with override_settings(AWS_SES_TENANT=tenant_callable):
+            send_mail("subject", "body\n", "from@example.com", ["to@example.com"])
+
+        self.assertEqual(self.outbox.pop()["TenantName"], "message-tenant")
+        self.assertEqual(tenant_callable.message.subject, "subject")
+        self.assertEqual(tenant_callable.dkim_domain, None)
+        self.assertEqual(tenant_callable.dkim_key, None)
+        self.assertEqual(tenant_callable.dkim_selector, "ses")
+        self.assertEqual(tenant_callable.dkim_headers, ["From", "To", "Cc", "Subject"])
+
+    def test_tenant_is_not_set_by_default(self):
+        send_mail("subject", "body\n", "from@example.com", ["to@example.com"])
+        self.assertNotIn("TenantName", self.outbox.pop())
+
     @override_settings(AWS_SES_CONFIGURATION_SET=None, DKIM_DOMAIN="example.com", DKIM_PRIVATE_KEY=DKIM_PRIVATE_KEY)
     def test_dkim_mail(self):
         # DKIM verification uses DNS to retrieve the public key when checking
@@ -378,6 +417,11 @@ class SESBackendTestInitialize(TestCase):
             with override_settings(AWS_SES_AUTO_THROTTLE=throttle_setting):
                 backend = django_ses.SESBackend(aws_auto_throttle=throttle_param)
                 self.assertEqual(backend._throttle, expected_throttle_val)
+
+    @override_settings(AWS_SES_TENANT="test-tenant", USE_SES_V2=False)
+    def test_tenant_requires_ses_v2(self):
+        with self.assertRaisesMessage(ValueError, "AWS_SES_TENANT requires USE_SES_V2=True"):
+            django_ses.SESBackend()
 
 
 @override_settings(EMAIL_BACKEND="tests.test_backend.FakeSESBackend")

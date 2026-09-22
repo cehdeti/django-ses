@@ -329,6 +329,40 @@ where
 .. _SES Event Publishing: https://docs.aws.amazon.com/ses/latest/DeveloperGuide/monitor-using-event-publishing.html
 
 
+SES Tenant Management
+=====================
+
+Amazon SES tenants isolate sending resources and reputation for different
+customers or business units. To send through a tenant, enable SES API v2 and
+set ``AWS_SES_TENANT`` to the tenant name::
+
+    USE_SES_V2 = True
+    AWS_SES_TENANT = 'my-tenant-name'
+
+The verified identity and Configuration Set used for the message must be
+associated with the tenant in Amazon SES. Tenant sending requires boto3 and
+botocore 1.40.0 or newer.
+
+To select a tenant per message, set ``AWS_SES_TENANT`` to a callable. The
+callable receives the same arguments as the
+``AWS_SES_CONFIGURATION_SET`` callable::
+
+    def ses_tenant(message, dkim_domain=None, dkim_key=None,
+                   dkim_selector=None, dkim_headers=()):
+        tenant = 'my-default-tenant'
+        # use message and dkim_* to select the tenant
+        return tenant
+
+    AWS_SES_TENANT = ses_tenant
+
+Tenant selection uses the SES v2 ``TenantName`` API parameter. Configuring
+``AWS_SES_TENANT`` without ``USE_SES_V2 = True`` raises ``ValueError``.
+
+For more information, see the `AWS SES tenant management documentation`_.
+
+.. _AWS SES tenant management documentation: https://docs.aws.amazon.com/ses/latest/dg/tenants.html
+
+
 SES Global Endpoint (Multi-Region Endpoint)
 ============================================
 
@@ -739,6 +773,12 @@ Full List of Settings
   Configuration Set. Set this to a string if you want all messages to have the
   same configuration set.  Set this to a callable if you want to set
   configuration set on a per message basis.
+
+``AWS_SES_TENANT``
+  Optional. The name of the Amazon SES tenant through which to send. Set this
+  to a string to use one tenant for all messages, or a callable to select a
+  tenant per message. Requires ``USE_SES_V2 = True`` and boto3/botocore 1.40.0
+  or newer. Default is ``None``.
 
 ``TIME_ZONE``
   Default Django setting, optionally set this. Details:

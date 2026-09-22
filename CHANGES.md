@@ -10,7 +10,8 @@ Pulls and Issues:
  - None
 
 Features:
-- None
+- Add support for sending email through an Amazon SES tenant with the
+  `AWS_SES_TENANT` setting.
 
 Changes:
 - None
